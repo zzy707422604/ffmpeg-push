@@ -1,7 +1,3 @@
-
-// ffmpegDlg.cpp : implementation file
-//
-
 #define __STDC_CONSTANT_MACROS
 #include "stdafx.h"
 #include "ffmpeg.h"
@@ -9,56 +5,6 @@
 #include "afxdialogex.h"
 #include <string>
 using namespace std;
-#ifdef _WIN32
-//Windows
-extern "C"
-{
-#include "libavcodec/avcodec.h"
-#include "libavformat/avformat.h"
-#include "libswscale/swscale.h"
-#include "libavdevice/avdevice.h"
-#include "libavutil/imgutils.h"
-#include "libavutil/time.h"
-#include "SDL/SDL.h"
-//#include "SDL/SDL_main.h"
-};
-#else
-//Linux...
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libswscale/swscale.h>
-#include <libavdevice/avdevice.h>
-#include <SDL/SDL.h>
-#include <SDL/SDL_main.h>
-#ifdef __cplusplus
-};
-#endif
-#endif
-#pragma comment(lib ,"SDL2.lib")
-//#pragma comment(lib ,"SDL2main.lib")
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#endif
-
-
-//Output YUV420P 
-#define OUTPUT_YUV420P 0
-//'1' Use Dshow 
-//'0' Use VFW
-#define USE_DSHOW 0
-
-#define USE_SDL 1
-
-#define SFM_REFRESH_EVENT  (SDL_USEREVENT + 1)
-
-#define SFM_BREAK_EVENT  (SDL_USEREVENT + 2)
-
-#define _CRT_SECURE_NO_DEPRECATE
-
 int thread_exit = 0;
 int thread_pause = 0;
 // CAboutDlg dialog used for App About
@@ -223,249 +169,211 @@ int sfp_refresh_thread(void *opaque)
 	return 0;
 }
 
-int OpenLocalCamera(AVFormatContext *pFormatCtx, bool isUseDshow, string cameraName)
+void CffmpegDlg::Decode(AVCodecContext *dec_ctx, AVPacket *pkt, AVFrame *pFrame, AVFrame *yuvFrame, struct SwsContext *imgCtx)
 {
-	avdevice_register_all();
-#ifdef _WIN32
-	if (isUseDshow)
+	handleDecode.decode(dec_ctx, pkt, pFrame, yuvFrame, imgCtx);
+}
+
+void CffmpegDlg::InitAll()
+{
+	av_register_all();
+	avformat_network_init();
+	ofmt = NULL;
+	ifmt_ctx = avformat_alloc_context();
+	ofmt_ctx = avformat_alloc_context();
+	iCodecCtx = NULL;
+	oCodecCtx = NULL;
+	video_st = NULL;
+	oCodec = NULL;
+	param = NULL;
+	ifmt_ctx->probesize = 10000 * 1024;
+	ifmt_ctx->duration = 10 * AV_TIME_BASE;
+	got_encpicture = -1;
+	//frame_index = 0;
+	//start_time = 0;
+	out_filename = "rtsp://192.168.1.110:554/2420725677251317_video.sdp+123456";
+	cameraName = "USB Camera";
+	videoindex = -1;
+	pFrame = av_frame_alloc();
+}
+
+int32_t CffmpegDlg::SetCamera(AVFormatContext *ifmt_ctx, string cameraName, int &videoindex)
+{
+	getCameraStream handleGetCameraStream;
+	if (handleGetCameraStream.OpenLocalCamera(ifmt_ctx, true, cameraName) == -1)
 	{
-		AVInputFormat *ifmt = av_find_input_format("dshow");
-		//Set own video device's name
-		if (avformat_open_input(&pFormatCtx, ("video=" + cameraName).c_str(), ifmt, NULL) != 0)
-		{
-			printf("Couldn't open input stream.（无法打开输入流）\n");
-			return -1;
-		}
+		printf("打开摄像头失败");
+		return openLocalCameraFail;
+	}
+	
+	if (handleGetCameraStream.FindStream(ifmt_ctx, videoindex) == findCameraStreamFail)
+	{
+		printf("获取摄像头流失败");
+		return openLocalCameraFail;
+	}
+
+	return success;
+}
+
+int32_t CffmpegDlg::SetDecoder(AVCodecContext *inCodecCtx, AVFormatContext *inFmt_ctx, int iVideoindex)
+{
+	iCodecCtx = handleDecode.setDecoder(inCodecCtx, inFmt_ctx, iVideoindex);
+	if (iCodecCtx == NULL)
+		return setDecoderFail;
+	else
+		return success;
+}
+
+int32_t CffmpegDlg::SetEncoder(AVFormatContext *outFmt_ctx, AVFormatContext *inFmt_ctx, AVCodecContext  *outCodecCtx, AVCodec *outCodec, AVDictionary *pParam,
+	const char* pFilePath, int iVideoindex)
+{
+	sSetEncoder = handleEncode.setEncoder(outFmt_ctx, inFmt_ctx, outCodecCtx, outCodec, pParam,
+		pFilePath, iVideoindex);
+	if (sSetEncoder.ofmt_ctx == NULL || sSetEncoder.oCodecCtx == NULL || sSetEncoder.oCodec == NULL || sSetEncoder.param == NULL)
+	{
+		return setEncoderFail;
 	}
 	else
 	{
-		AVInputFormat *ifmt = av_find_input_format("vfwcap");
-		if (avformat_open_input(&pFormatCtx, "0", ifmt, NULL) != 0)
-		{
-			printf("Couldn't open input stream.（无法打开输入流）\n");
-			return -1;
-		}
+		oCodecCtx = sSetEncoder.oCodecCtx;
+		oCodec = sSetEncoder.oCodec;
+		param = sSetEncoder.param;
+		ofmt_ctx = sSetEncoder.ofmt_ctx;
 	}
-#endif
-	//Linux
-#ifdef linux
-	AVInputFormat *ifmt = av_find_input_format("video4linux2");
-	if (avformat_open_input(&pFormatCtx, "/dev/video0", ifmt, NULL) != 0) {
-		printf("Couldn't open input stream.（无法打开输入流）\n");
-		return -1;
-	}
-#endif
-	return 0;
+	return success;
 }
 
-static void decode(AVCodecContext *dec_ctx, AVPacket *pkt, AVFrame *pFrame, AVFrame *yuvFrame, struct SwsContext *imgCtx/*, FILE *outfile*/)
+int32_t CffmpegDlg::InitPush(AVFormatContext *outFmt_ctx, AVCodec *outCodec, AVCodecContext  *outCodecCtx, AVDictionary *pParam, AVStream *pVideo_st)
 {
-	int ret;
-	/* send the packet with the compressed data to the decoder */
-	ret = avcodec_send_packet(dec_ctx, pkt);
-	if (ret < 0)
+	video_st = handlePush.initPush(outFmt_ctx, outCodec, outCodecCtx, pParam, pVideo_st);
+	if (video_st == NULL)
 	{
-		fprintf(stderr, "Error submitting the packet to the decoder\n");
-		exit(1);
+		return initPushFail;
 	}
-	/* read all the output frames (in general there may be any number of them */
-	while (ret >= 0)
-	{
-		ret = avcodec_receive_frame(dec_ctx, pFrame);
-		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-			return;
-		else if (ret < 0)
-		{
-			fprintf(stderr, "Error during decoding\n");
-			exit(1);
-		}
-		sws_scale(imgCtx, pFrame->data, pFrame->linesize, 0, dec_ctx->height, yuvFrame->data, yuvFrame->linesize);
-	}
+	start_time = av_gettime();
+	return success;
 }
 
-
-void CffmpegDlg::OnBnClickedOk()
+int32_t CffmpegDlg::InitSDL()
 {
-	// TODO: Add your control notification handler code here
-	av_register_all();
-	avformat_network_init();
-	AVOutputFormat *ofmt = NULL;
-	AVFormatContext *ifmt_ctx = avformat_alloc_context();
-	AVFormatContext *ofmt_ctx = avformat_alloc_context();
-	AVCodecContext  *iCodecCtx = NULL;
-	AVCodecContext  *oCodecCtx = NULL;
-	AVStream		*video_st;
-	ifmt_ctx->probesize = 10000 * 1024;
-	ifmt_ctx->duration = 10 * AV_TIME_BASE;
-	int	got_encpicture = -1;
-	int frame_index = 0;
-	int64_t start_time = 0;
-	const char *out_filename = "rtsp://192.168.1.110:554/2420725677251317_video.sdp+123456";
-	// 打开本地摄像头
-	if (OpenLocalCamera(ifmt_ctx, true, "USB Camera") == -1)
-	{
-		printf("打开摄像头失败");
-		return;
-	}
-	av_dump_format(ifmt_ctx, 0, NULL, 0);
-	// 寻找视频流信息
-	if (avformat_find_stream_info(ifmt_ctx, NULL) < 0)
-	{
-		printf("寻找视频流信息失败");
-		return;
-	}
-
-	// 打开视频获取视频流，设置视频默认索引值
-	int videoindex = -1;
-	for (int i = 0; i < ifmt_ctx->nb_streams; i++)
-	{
-		if (ifmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
-		{
-			videoindex = i;
-			break;
-		}
-	}
-	// 如果没有找到视频的索引说明没有视频流
-	if (videoindex == -1)
-	{
-		printf("没有找到视频流");
-		return;
-	}
-	// 分配解码器上下文
-	iCodecCtx = avcodec_alloc_context3(NULL);
-	// 获取解码器上下文信息
-	if (avcodec_parameters_to_context(iCodecCtx, ifmt_ctx->streams[videoindex]->codecpar) < 0)//codecpar：stream的解码器信息，将codecpar信息传递给iCodeCtx
-	{
-		printf("获取解码器失败");
-		return;
-	}
-	// 查找解码器
-	AVCodec *iCodec = avcodec_find_decoder(iCodecCtx->codec_id);//摄像头传过来的是MJPEG的封装，寻找MJPEG的解码器
-	if (iCodec == NULL)
-	{
-		printf("查找解码器失败");
-		return;
-	}
-	// 打开解码器
-	if (avcodec_open2(iCodecCtx, iCodec, NULL) < 0)
-	{
-		printf("打开解码器失败");
-		return;
-	}
+	//SDL Init
+	dec_packet = (AVPacket *)av_malloc(sizeof(AVPacket)); //SDL播放用的packet
+	pFrameYUVSDL = av_frame_alloc();	
 	// 对图形进行裁剪以便于显示得更好
-	struct SwsContext *img_convert_ctx_SDL = sws_getContext(iCodecCtx->width, iCodecCtx->height, iCodecCtx->pix_fmt, iCodecCtx->width, iCodecCtx->height, AV_PIX_FMT_YUV420P, SWS_BICUBIC, NULL, NULL, NULL);
+	img_convert_ctx_SDL = sws_getContext(iCodecCtx->width, iCodecCtx->height, iCodecCtx->pix_fmt, iCodecCtx->width, iCodecCtx->height, AV_PIX_FMT_YUV420P, SWS_BICUBIC, NULL, NULL, NULL);
 	if (NULL == img_convert_ctx_SDL)
 	{
 		printf("Get swscale context failed!");
-		return;
+		return initSDLFail;
 	}
-	//输出准备，准备将解码好的进行编码成H264
-	avformat_alloc_output_context2(&ofmt_ctx, NULL, "rtsp", out_filename);//rtmp使用的是flv
-	if (!ofmt_ctx)
-	{
-		printf("Could not create output context（不能创建输出上下文）\n");
-		return;
-	}
-	//寻找h264的编码器
-	AVCodec *oCodec = avcodec_find_encoder(AV_CODEC_ID_H264);
-	if (!oCodec)
-	{
-		printf("Can not find encoder! (没有找到合适的编码器！)\n");
-		return;
-	}
-	//进行编码器设置
-	oCodecCtx = avcodec_alloc_context3(oCodec);
-	oCodecCtx->pix_fmt = AV_PIX_FMT_YUV420P;
-	oCodecCtx->width = ifmt_ctx->streams[videoindex]->codecpar->width;
-	oCodecCtx->height = ifmt_ctx->streams[videoindex]->codecpar->height;
-	oCodecCtx->time_base.num = 1;
-	oCodecCtx->time_base.den = 25;
-	oCodecCtx->bit_rate = 400000;
-	oCodecCtx->gop_size = 50;
-	if (ofmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
-		oCodecCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-	//H264 codec param  
-	oCodecCtx->qmin = 10;
-	oCodecCtx->qmax = 51;
-	//Optional Param  
-	oCodecCtx->max_b_frames = 3;
-	AVDictionary *param = 0; //AVDictionary是FFmpeg的键值对存储工具，FFmpeg经常使用AVDictionary设置/读取内部参数
-	av_dict_set(&param, "preset", "medium", 0);
-	av_dict_set(&param, "rtsp_transport", "udp", 0);	//解码时花屏，加上有花屏，去掉有延时
-	av_dict_set(&param, "tune", "zerolatency", 0);
-	av_dict_set(&param, "profile", "baseline", 0);
-	av_dict_set(&param, "muxdelay", "1", 0);	//设置延迟最大
-	av_dict_set(&param, "stimeout", "5000000", 0);	//设置5s超时断开连接时间
-	av_dict_set(&param, "crf", "40", 0);
-	av_dict_set(&param, "buffer_size", "1024000", 0);
-	//打开编码器
-	if (avcodec_open2(oCodecCtx, oCodec, &param) < 0) {
-		printf("Failed to open encoder! (编码器打开失败！)\n");
-		return;
-	}
-	//添加新的输出流，在avformat_write_header()之前混合好
-	video_st = avformat_new_stream(ofmt_ctx, oCodec);
-	if (video_st == NULL) {
-		printf("video_st is NULL! (输出流无效！)\n");
-		return;
-	}
-	video_st->time_base.num = 1;
-	video_st->time_base.den = 25;
-	avcodec_parameters_from_context(video_st->codecpar, oCodecCtx);//stream获取编码器的信息
-	ofmt_ctx->audio_codec_id = ofmt_ctx->oformat->audio_codec;
-	ofmt_ctx->video_codec_id = ofmt_ctx->oformat->video_codec;
-	int ret = avformat_write_header(ofmt_ctx, &param);//写头文件
-	if (ret < 0)
-	{
-		return;
-	}
-	AVPacket enc_packet;//封装后推流用的packet
-	//av_new_packet(&enc_packet, 0);
-	AVFrame *pFrame = av_frame_alloc();
-	uint8_t *out_buffer;
-	out_buffer = (uint8_t *)av_malloc(av_image_get_buffer_size(AV_PIX_FMT_YUV420P, oCodecCtx->width, oCodecCtx->height, 1));
-	//SDL Init--------------------------------------------------------------
 	SDL_SetMainReady();
 	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER))
 	{
-		return;
+		return initSDLFail;
 	}
 	//SDL 2.0 Support for multiple windows
+
+
+	screen = SDL_CreateWindowFrom(m_hWnd);//MFC中无法在同一条线程使用SDL_CreateWindow，响应事件会产生冲突
+	if (!screen)
+	{
+		return initSDLFail;
+	}
+	sdlRenderer = SDL_CreateRenderer(screen, -1, 0);
+	sdlTexture = SDL_CreateTexture(sdlRenderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, iCodecCtx->width, iCodecCtx->height);
+
 	CRect CRect;//获取当前的对话框大小
 	GetWindowRect(&CRect);
 	int screen_w = CRect.Width();
 	int screen_h = CRect.Height();
-	AVFrame *pFrameYUVSDL = av_frame_alloc();
-	SDL_Window *screen = SDL_CreateWindowFrom(m_hWnd);//MFC中无法在同一条线程使用SDL_CreateWindow，响应事件会产生冲突
-	if (!screen)
-	{
-		return;
-	}
-	SDL_Renderer* sdlRenderer = SDL_CreateRenderer(screen, -1, 0);
-	SDL_Texture* sdlTexture = SDL_CreateTexture(sdlRenderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, iCodecCtx->width, iCodecCtx->height);
 	SDL_Rect sdlRect;
 	sdlRect.x = 0;
 	sdlRect.y = 0;
 	sdlRect.w = screen_w;
 	sdlRect.h = screen_h;
-	AVPacket *dec_packet = (AVPacket *)av_malloc(sizeof(AVPacket)); //SDL播放用的packet
+
 	SDL_Thread *video_tid = SDL_CreateThread(sfp_refresh_thread, NULL, NULL);
-	uint8_t *out_buffer_SDL = (uint8_t *)av_malloc((av_image_get_buffer_size(AV_PIX_FMT_YUV420P, iCodecCtx->width, iCodecCtx->height, 1)));
+	out_buffer_SDL = (uint8_t *)av_malloc((av_image_get_buffer_size(AV_PIX_FMT_YUV420P, iCodecCtx->width, iCodecCtx->height, 1)));
 	av_image_fill_arrays(pFrameYUVSDL->data, pFrameYUVSDL->linesize, out_buffer_SDL, AV_PIX_FMT_YUV420P, iCodecCtx->width, iCodecCtx->height, 1);
-	start_time = av_gettime();
-	//uint8_t* cPacketData = new uint8_t((1024*1024)  * sizeof(uint8_t*));
-	uint8_t* cExtradata = (uint8_t *)malloc((1024 * 1024) * sizeof(uint8_t));//oCodecCtx->extradata;
-	AVRational time_base_in;
-	AVRational time_base_conert;
-	AVRational time_base1;
-	int64_t calc_duration;
-	AVRational time_base;
-	AVRational r_framerate1;
-	AVRational time_base_q;
-	int64_t pts_time;
-	int64_t now_time;
-	SDL_Event event;//SDL事件，用于控制推流和SDL播放
-	FILE *file = fopen("C:\\Users\\admin\\Desktop\\123456.h264", "wb");
+}
+
+int32_t CffmpegDlg::Encode(AVCodecContext *oCodecCtx, AVFrame *pFrameYUVSDL, AVFormatContext *ifmt_ctx, int videoindex, AVPacket *dec_packet, int got_encpicture)
+{
+
+	return handleEncode.encode(oCodecCtx, pFrameYUVSDL, ifmt_ctx, videoindex, dec_packet, got_encpicture);
+}
+
+void CffmpegDlg::WriteVideoExtraParam(int videoindex, AVStream *video_st, AVFormatContext *ifmt_ctx, AVFormatContext *ofmt_ctx, AVCodecContext  *oCodecCtx)
+{
+	handleEncode.writeVideoControl(videoindex, start_time, video_st, ifmt_ctx, ofmt_ctx);
+
+	handleEncode.insertExtraData(videoindex, oCodecCtx);
+}
+
+void CffmpegDlg::PushStream(AVFormatContext *ofmt_ctx)
+{
+	handleEncode.push(handlePush,ofmt_ctx);
+}
+
+void CffmpegDlg::PlayStream()
+{
+	//SDL
+	SDL_UpdateTexture(sdlTexture, NULL, pFrameYUVSDL->data[0], pFrameYUVSDL->linesize[0]);
+	SDL_RenderClear(sdlRenderer);
+	SDL_RenderCopy(sdlRenderer, sdlTexture, NULL, NULL);
+	SDL_RenderPresent(sdlRenderer);
+	//在最小化时sdl无法绑定，在这重新判断绑定
+	if (sdlRenderer == NULL)
+	{
+		sdlRenderer = SDL_CreateRenderer(screen, -1, 0);
+		sdlTexture = SDL_CreateTexture(sdlRenderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, iCodecCtx->width, iCodecCtx->height);
+	}
+	av_packet_unref(dec_packet);
+}
+
+void CffmpegDlg::RealseAll()
+{
+	sws_freeContext(img_convert_ctx_SDL);
+	SDL_Quit();
+	av_write_trailer(ofmt_ctx);
+	//av_free(out_buffer);
+	av_free(out_buffer_SDL);
+	if (video_st)
+	{
+		avcodec_close(oCodecCtx);
+	}
+	avformat_close_input(&ifmt_ctx);
+	av_frame_free(&pFrameYUVSDL);
+	av_frame_free(&pFrame);
+	avcodec_close(iCodecCtx);
+	avcodec_close(oCodecCtx);
+	avformat_close_input(&ifmt_ctx);
+	avformat_close_input(&ofmt_ctx);
+}
+
+
+
+void CffmpegDlg::OnBnClickedOk()
+{
+	// TODO: Add your control notification handler code here
+	InitAll();
+
+	// 打开并设置本地摄像头
+	int ret = SetCamera(ifmt_ctx, cameraName, videoindex);
+
+	//设置解码器
+	ret = SetDecoder(iCodecCtx, ifmt_ctx, videoindex);
+
+	//设置编码器
+	ret = SetEncoder(ofmt_ctx, ifmt_ctx, oCodecCtx, oCodec, param,
+		out_filename, videoindex);
+
+	//推流前初始化
+	ret = InitPush(ofmt_ctx, oCodec, oCodecCtx, param, video_st);
+
+	//初始化SDL
+	InitSDL();
+
 	//Event Loop
 	for (;;)
 	{
@@ -473,101 +381,29 @@ void CffmpegDlg::OnBnClickedOk()
 		SDL_WaitEvent(&event);
 		if (event.type == SFM_REFRESH_EVENT)
 		{
-			//------------------------------
 			if (av_read_frame(ifmt_ctx, dec_packet) >= 0)
 			{
 				if (dec_packet->stream_index == videoindex && pFrame != NULL)
 				{
+					//解码出YUV
+					Decode(iCodecCtx, dec_packet, pFrame, pFrameYUVSDL, img_convert_ctx_SDL);
 
-					decode(iCodecCtx, dec_packet, pFrame, pFrameYUVSDL, img_convert_ctx_SDL);//解码出YUV给SDL播放
-					//初始化封装包
-					enc_packet.data = NULL;
-					enc_packet.size = 0;
-					av_init_packet(&enc_packet);
-					//编码
-					ret = avcodec_send_frame(oCodecCtx, pFrameYUVSDL);
-					time_base_in = ifmt_ctx->streams[videoindex]->time_base;//{ 1, 1000000 };
-					//time_base_in = iCodecCtx->time_base;//{ 1, 1000 };
-					time_base_conert = { 1, AV_TIME_BASE };
-					pFrameYUVSDL->pts = av_rescale_q(dec_packet->pts, time_base_in, time_base_conert);
-					if (ret < 0)
+					//编码成H264
+					ret = Encode(oCodecCtx, pFrameYUVSDL, ifmt_ctx, videoindex, dec_packet, got_encpicture);
+
+					if (ret == 0)
 					{
-						av_frame_free(&pFrame);
-						return;
+						//写ptd等参数以及添加sps pps头
+						WriteVideoExtraParam(videoindex, video_st, ifmt_ctx, ofmt_ctx,oCodecCtx);
+
+						//推流至服务器
+						PushStream(ofmt_ctx);
 					}
-					got_encpicture = avcodec_receive_packet(oCodecCtx, &enc_packet);
 
-
-					if (got_encpicture == 0)
-					{
-						frame_index++;
-						enc_packet.stream_index = video_st->index;
-						//FIX：No PTS (Example: Raw H.264)
-						//Simple Write PTS
-						if (enc_packet.pts == AV_NOPTS_VALUE)
-						{
-							//Write PTS
-							time_base1 = ifmt_ctx->streams[videoindex]->time_base;
-							//Duration between 2 frames (us)
-							calc_duration = (double)AV_TIME_BASE / av_q2d(ifmt_ctx->streams[videoindex]->r_frame_rate);
-							//Parameters
-							enc_packet.pts = (double)(frame_index*calc_duration) / (double)(av_q2d(time_base1)*AV_TIME_BASE);
-							enc_packet.dts = enc_packet.pts;
-							enc_packet.duration = (double)calc_duration / (double)(av_q2d(time_base1)*AV_TIME_BASE);
-						}
-
-						//Write PTS
-						time_base = ofmt_ctx->streams[video_st->index]->time_base;//{ 1, 1000 };
-						r_framerate1 = ifmt_ctx->streams[videoindex]->r_frame_rate;// { 50, 2 };
-						time_base_q = { 1, AV_TIME_BASE };
-						//Duration between 2 frames (us)
-						calc_duration = (double)(AV_TIME_BASE)*(1 / av_q2d(r_framerate1));	//内部时间戳
-						//Parameters
-						enc_packet.pts = av_rescale_q(frame_index*calc_duration, time_base_q, time_base);
-						enc_packet.dts = enc_packet.pts;
-						enc_packet.duration = av_rescale_q(calc_duration, time_base_q, time_base);
-						enc_packet.pos = -1;
-						//Delay
-						pts_time = av_rescale_q(enc_packet.dts, time_base, time_base_q);
-						now_time = av_gettime() - start_time;
-						if (pts_time > now_time)
-							av_usleep(pts_time - now_time);
-
-						//Print to Screen
-						if (enc_packet.stream_index == videoindex) {
-							if (enc_packet.flags &AV_PKT_FLAG_KEY)//找到带I帧的AVPacket
-							{
-
-								if (enc_packet.data != NULL)
-								{
-									if (enc_packet.data[0] == 0 && enc_packet.data[1] == 0 && enc_packet.data[2] == 0 && enc_packet.data[3] == 1 && enc_packet.data[4] == 101)
-									{
-										//找到I帧，插入SPS和PPS
-										memcpy(cExtradata, oCodecCtx->extradata, oCodecCtx->extradata_size);
-										memcpy(cExtradata + oCodecCtx->extradata_size, enc_packet.data, enc_packet.size);//&enc_packet.data[0]
-										enc_packet.size += oCodecCtx->extradata_size;
-										memcpy(enc_packet.data, cExtradata, enc_packet.size);
-									}
-								}
-							}
-						}
-						//写到输出上下文
-						ret = av_interleaved_write_frame(ofmt_ctx, &enc_packet);
-					}
-					av_packet_unref(&enc_packet);
-					//SDL---------------------------
-					SDL_UpdateTexture(sdlTexture, NULL, pFrameYUVSDL->data[0], pFrameYUVSDL->linesize[0]);
-					SDL_RenderClear(sdlRenderer);
-					SDL_RenderCopy(sdlRenderer, sdlTexture, NULL, NULL);
-					SDL_RenderPresent(sdlRenderer);
-					//在最小化时sdl无法绑定，在这重新判断绑定
-					if (sdlRenderer == NULL)
-					{
-						sdlRenderer = SDL_CreateRenderer(screen, -1, 0);
-						sdlTexture = SDL_CreateTexture(sdlRenderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, iCodecCtx->width, iCodecCtx->height);
-					}
+					//显示至屏幕
+					PlayStream();
+					//RealsePacket();
 				}
-				av_packet_unref(dec_packet);
 			}
 			else
 			{
@@ -584,23 +420,9 @@ void CffmpegDlg::OnBnClickedOk()
 			break;
 		}
 	}
-	sws_freeContext(img_convert_ctx_SDL);
-	SDL_Quit();
-	av_write_trailer(ofmt_ctx);
-	av_free(out_buffer);
-	av_free(out_buffer_SDL);
-	if (video_st)
-	{
-		avcodec_close(oCodecCtx);
-	}
-	avformat_close_input(&ifmt_ctx);
-	av_frame_free(&pFrameYUVSDL);
-	av_frame_free(&pFrame);
-	avcodec_close(iCodecCtx);
-	avcodec_close(oCodecCtx);
-	avformat_close_input(&ifmt_ctx);
-	avformat_close_input(&ofmt_ctx);
-	free(cExtradata);
+
+	RealseAll();
+
 	CDialogEx::OnOK();
 }
 
@@ -610,5 +432,7 @@ void CffmpegDlg::OnBnClickedOk()
 void CffmpegDlg::OnBnClickedCancel()
 {
 	// TODO: Add your control notification handler code here
+	thread_exit = 1;
+
 	CDialogEx::OnCancel();
 }

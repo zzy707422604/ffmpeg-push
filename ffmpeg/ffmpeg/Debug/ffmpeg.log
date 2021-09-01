@@ -1,0 +1,33 @@
+﻿Build started 2020/12/28 11:29:43.
+     1>Project "C:\Users\admin\Desktop\ffmpeg+SDL2DEMO - 副本\ffmpeg\ffmpeg\ffmpeg.vcxproj" on node 2 (Rebuild target(s)).
+     1>ClCompile:
+         D:\visual studio\新建文件夹\VC\bin\CL.exe /c /I./include /ZI /nologo /W3 /WX- /sdl- /Od /Oy- /D WIN32 /D _WINDOWS /D _DEBUG /D _UNICODE /D UNICODE /Gm /EHsc /RTC1 /MTd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Yc"stdafx.h" /Fp"Debug\ffmpeg.pch" /Fo"Debug\\" /Fd"Debug\vc120.pdb" /Gd /TP /analyze- /errorReport:prompt stdafx.cpp
+         stdafx.cpp
+         D:\visual studio\新建文件夹\VC\bin\CL.exe /c /I./include /ZI /nologo /W3 /WX- /sdl- /Od /Oy- /D WIN32 /D _WINDOWS /D _DEBUG /D _UNICODE /D UNICODE /Gm /EHsc /RTC1 /MTd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Yu"stdafx.h" /Fp"Debug\ffmpeg.pch" /Fo"Debug\\" /Fd"Debug\vc120.pdb" /Gd /TP /analyze- /errorReport:prompt ffmpeg.cpp ffmpegDlg.cpp
+         ffmpegDlg.cpp
+     1>c:\users\admin\desktop\ffmpeg+sdl2demo - 副本\ffmpeg\ffmpeg\ffmpegdlg.cpp(5): warning C4603: '__STDC_CONSTANT_MACROS' : macro is not defined or definition is different after precompiled header use
+                 Add macro to precompiled header instead of defining here
+                 c:\users\admin\desktop\ffmpeg+sdl2demo - 副本\ffmpeg\ffmpeg\ffmpegdlg.cpp(6) : use of precompiled header
+     1>c:\users\admin\desktop\ffmpeg+sdl2demo - 副本\ffmpeg\ffmpeg\include\libavutil\rational.h : warning C4819: The file contains a character that cannot be represented in the current code page (936). Save the file in Unicode format to prevent data loss
+     1>c:\users\admin\desktop\ffmpeg+sdl2demo - 副本\ffmpeg\ffmpeg\ffmpegdlg.cpp(123): warning C4996: 'freopen': This function or variable may be unsafe. Consider using freopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+                 d:\visual studio\新建文件夹\vc\include\stdio.h(226) : see declaration of 'freopen'
+     1>c:\users\admin\desktop\ffmpeg+sdl2demo - 副本\ffmpeg\ffmpeg\ffmpegdlg.cpp(124): warning C4996: 'freopen': This function or variable may be unsafe. Consider using freopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+                 d:\visual studio\新建文件夹\vc\include\stdio.h(226) : see declaration of 'freopen'
+     1>c:\users\admin\desktop\ffmpeg+sdl2demo - 副本\ffmpeg\ffmpeg\ffmpegdlg.cpp(295): warning C4996: 'av_register_all': was declared deprecated
+                 c:\users\admin\desktop\ffmpeg+sdl2demo - 副本\ffmpeg\ffmpeg\include\libavformat\avformat.h(2025) : see declaration of 'av_register_all'
+     1>c:\users\admin\desktop\ffmpeg+sdl2demo - 副本\ffmpeg\ffmpeg\ffmpegdlg.cpp(322): warning C4018: '<' : signed/unsigned mismatch
+         ffmpeg.cpp
+         Generating Code...
+       ResourceCompile:
+         C:\Program Files (x86)\Windows Kits\8.1\bin\x86\rc.exe /D _DEBUG /D _UNICODE /D UNICODE /l"0x0409" /IDebug\ /nologo /fo"Debug\ffmpeg.res" ffmpeg.rc 
+       Link:
+         D:\visual studio\新建文件夹\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"C:\Users\admin\Desktop\ffmpeg+SDL2DEMO - 副本\ffmpeg\Debug\ffmpeg.exe" /INCREMENTAL /NOLOGO /LIBPATH:./lib/ /LIBPATH:./lib/SDL avcodec.lib avdevice.lib avfilter.lib avformat.lib avutil.lib postproc.lib swresample.lib swscale.lib SDL2.lib SDL2main.lib SDL2test.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /manifestinput:"D:\visual studio\新建文件夹\VC\Include\Manifest\dpiaware.manifest" /DEBUG /PDB:"C:\Users\admin\Desktop\ffmpeg+SDL2DEMO - 副本\ffmpeg\Debug\ffmpeg.pdb" /SUBSYSTEM:WINDOWS /TLBID:1 /ENTRY:"wWinMainCRTStartup" /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Users\admin\Desktop\ffmpeg+SDL2DEMO - 副本\ffmpeg\Debug\ffmpeg.lib" /MACHINE:X86 /SAFESEH:NO Debug\ffmpeg.res
+         Debug\ffmpeg.obj
+         Debug\ffmpegDlg.obj
+         Debug\stdafx.obj
+         ffmpeg.vcxproj -> C:\Users\admin\Desktop\ffmpeg+SDL2DEMO - 副本\ffmpeg\Debug\ffmpeg.exe
+     1>Done Building Project "C:\Users\admin\Desktop\ffmpeg+SDL2DEMO - 副本\ffmpeg\ffmpeg\ffmpeg.vcxproj" (Rebuild target(s)).
+
+Build succeeded.
+
+Time Elapsed 00:00:06.76

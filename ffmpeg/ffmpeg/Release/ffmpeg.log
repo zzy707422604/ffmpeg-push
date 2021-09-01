@@ -1,0 +1,15 @@
+﻿Build started 2020/12/18 19:40:00.
+     1>Project "E:\ffmpeg+SDL2DEMO - 副本\ffmpeg\ffmpeg\ffmpeg.vcxproj" on node 2 (Build target(s)).
+     1>Link:
+         D:\visual studio\新建文件夹\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"E:\ffmpeg+SDL2DEMO - 副本\ffmpeg\Release\ffmpeg.exe" /INCREMENTAL:NO /NOLOGO /LIBPATH:./lib /LIBPATH:./lib/SDL avcodec.lib avdevice.lib avfilter.lib avformat.lib avutil.lib postproc.lib swresample.lib swscale.lib SDL2.lib SDL2main.lib SDL2test.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /manifestinput:"D:\visual studio\新建文件夹\VC\Include\Manifest\dpiaware.manifest" /DEBUG /PDB:"E:\ffmpeg+SDL2DEMO - 副本\ffmpeg\Release\ffmpeg.pdb" /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF /LTCG /TLBID:1 /ENTRY:"wWinMainCRTStartup" /DYNAMICBASE /NXCOMPAT /IMPLIB:"E:\ffmpeg+SDL2DEMO - 副本\ffmpeg\Release\ffmpeg.lib" /MACHINE:X86 /SAFESEH:NO Release\ffmpeg.res
+         Release\ffmpeg.obj
+         Release\ffmpegDlg.obj
+         Release\stdafx.obj
+         Generating code
+         Finished generating code
+         ffmpeg.vcxproj -> E:\ffmpeg+SDL2DEMO - 副本\ffmpeg\Release\ffmpeg.exe
+     1>Done Building Project "E:\ffmpeg+SDL2DEMO - 副本\ffmpeg\ffmpeg\ffmpeg.vcxproj" (Build target(s)).
+
+Build succeeded.
+
+Time Elapsed 00:00:03.37
